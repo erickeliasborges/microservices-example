@@ -1,0 +1,7 @@
+br\edu\utfpr\repository\ConfigServerRepository.class
+br\edu\utfpr\request\ConfigServerRequest.class
+br\edu\utfpr\entity\ConfigServerEntity$ConfigServerEntityBuilder.class
+br\edu\utfpr\entity\ConfigServerEntity.class
+br\edu\utfpr\services\ConfigServerService.class
+br\edu\utfpr\controllers\ConfigServerController.class
+br\edu\utfpr\ConfigServerApplication.class

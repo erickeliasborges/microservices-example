@@ -1,0 +1,33 @@
+server:
+  port: 8096
+
+spring:
+  cloud:
+    config:
+      server:
+        jdbc:
+          enabled: true
+          sql: select p.key, p.value from properties as p where p.application = ? and p.profile = ? and p.label = ?
+  application:
+    name: config-server
+  profiles:
+    active: jdbc
+  datasource:
+    url: jdbc:postgresql://postgres:5432/config_server
+    username: postgres
+    password: postgres
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+    show-sql: true
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://microservices-eureka-server:8761/eureka/
+    register-with-eureka: true
+    fetch-registry: true

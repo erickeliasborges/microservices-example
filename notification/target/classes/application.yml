@@ -1,0 +1,15 @@
+server:
+  port: 8093
+
+spring:
+  application:
+    name: notification
+  rabbitmq:
+    host: rabbitmq
+    port: 5672
+    username: guest
+    password: guest
+    queue: notifications
+  zipkin:
+    enabled: true
+    baseUrl: http://zipkin:9411

@@ -1,0 +1,226 @@
+services:
+  postgres:
+    container_name: postgres
+    image: postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      PGDATA: /data/postgres
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/customer
+    volumes:
+      - postgres:/data/postgres
+    ports:
+      - "5433:5432"
+    networks:
+      - postgres
+    restart: unless-stopped
+
+  pgadmin:
+    container_name: pgadmin
+    image: dpage/pgadmin4
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-pgadmin4@pgadmin.org}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    volumes:
+      - pgadmin:/var/lib/pgadmin
+    ports:
+      - "5050:80"
+    networks:
+      - postgres
+    restart: unless-stopped
+
+  mongodb_container:
+    container_name: mongodb-container
+    image: mongo:latest
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: rootpassword
+    ports:
+      - 27017:27017
+    networks:
+      - mongodb_container
+    volumes:
+      - mongodb_data_container:/data/db
+
+#  mongo-gui-docker:
+#    image: openkbs/mongo-gui-docker
+#    command: /usr/bin/mongodb-compass
+#    build:
+#      context: ./
+#      dockerfile: Dockerfile
+#      args:
+#        buildno: 1
+#    container_name: mongo-gui-docker
+#    environment:
+#      - USER_ID=${USER_ID:-1000}
+#      - GROUP_ID=${GROUP_ID:-1000}
+#    volumes:
+#      - /tmp/.X11-unix:/tmp/.X11-unix
+#      - ./workspace:/home/developer/workspace
+#    depends_on:
+#      - mongo
+#    links:
+#      - mongo
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: 'rabbitmq'
+    ports:
+      - 5672:5672
+      - 15672:15672
+    volumes:
+      - ~/.docker-conf/rabbitmq/data/:/var/lib/rabbitmq/
+      - ~/.docker-conf/rabbitmq/log/:/var/log/rabbitmq
+    networks:
+      - microservices
+
+  microservices-customer:
+    container_name: microservices-customer
+    image: microservices/customer-1
+    networks:
+      - microservices
+      - postgres
+    ports:
+      - 8090:8090
+
+  microservices-eureka-server:
+    container_name: microservices-eureka-server
+    image: microservices/eureka-server
+    networks:
+      - microservices
+    ports:
+      - 8761:8761
+
+  microservices-fraud:
+    container_name: microservices-fraud
+    image: microservices/fraud
+    networks:
+      - microservices
+      - mongodb_container
+    ports:
+      - 8092:8092
+
+  microservices-notification:
+    container_name: microservices-notification
+    image: microservices/notification-1
+    networks:
+      - microservices
+    ports:
+      - 8093:8093
+
+  config-server:
+    container_name: config-server
+    image: microservices/config-server
+    networks:
+      - microservices
+      - postgres
+    ports:
+      - 8096:8096
+
+  storage:
+    image: openzipkin/zipkin-mysql:latest
+    container_name: mysql
+    networks:
+      - microservices
+    ports:
+      - 3306:3306
+
+  # The zipkin process services the UI, and also exposes a POST endpoint that
+  # instrumentation can send trace data to. Scribe is disabled by default.
+  zipkin:
+    image: openzipkin/zipkin
+    container_name: zipkin
+#     Environment settings are defined here https://github.com/openzipkin/zipkin/blob/master/zipkin-server/README.md#environment-variables
+    environment:
+      - STORAGE_TYPE=mysql
+      # Point the zipkin at the storage backend
+      - MYSQL_HOST=mysql
+      - MYSQL_USER=zipkin
+      - MYSQL_PASS=zipkin
+      # Uncomment to enable scribe
+#      - SCRIBE_ENABLED=true
+#      Uncomment to enable self-tracing
+#      - SELF_TRACING_ENABLED=true
+#      - COLLECTOR_HTTP_ENABLED=true
+      # Uncomment to enable debug logging
+#      - JAVA_OPTS=-Dlogging.level.zipkin2=DEBUG
+    ports:
+      # Port used for the Zipkin UI and HTTP Api
+      - 9411:9411
+#        Uncomment if you set SCRIBE_ENABLED=true
+#      - 9410:9410
+    networks:
+      - microservices
+    depends_on:
+      - storage
+
+  # Adds a cron to process spans since midnight every hour, and all spans each day
+  # This data is served by http://192.168.99.100:8080/dependency
+  #
+  # For more details, see https://github.com/openzipkin/docker-zipkin-dependencies
+  dependencies:
+    image: openzipkin/zipkin-dependencies
+    container_name: dependencies
+    entrypoint: crond -f
+    environment:
+      - STORAGE_TYPE=mysql
+      - MYSQL_HOST=mysql
+      # Add the baked-in username and password for the zipkin-mysql image
+      - MYSQL_USER=zipkin
+      - MYSQL_PASS=zipkin
+      # Uncomment to see dependency processing logs
+      # - ZIPKIN_LOG_LEVEL=DEBUG
+      # Uncomment to adjust memory used by the dependencies job
+      # - JAVA_OPTS=-verbose:gc -Xms1G -Xmx1G
+    depends_on:
+      - storage
+    networks:
+      - microservices
+
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    ports:
+      - 9090:9090
+    depends_on:
+      - storage
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - microservices
+
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    ports:
+      - 3000:3000
+    depends_on:
+      - prometheus
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    networks:
+      - microservices
+
+  setup_grafana_datasource:
+    image: appropriate/curl
+    container_name: setup_grafana_datasource
+    depends_on:
+      - grafana
+    volumes:
+      - ./prometheus/create-datasource-and-dashboard.sh:/create.sh:ro
+    command: /create.sh
+
+networks:
+  postgres:
+    driver: bridge
+  microservices:
+    driver: bridge
+  mongodb_container:
+    driver: bridge
+
+volumes:
+  postgres:
+  pgadmin:
+  mongodb_data_container:

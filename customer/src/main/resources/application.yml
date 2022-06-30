@@ -1,0 +1,48 @@
+server:
+  port: 8090
+
+spring:
+  application:
+    name: customer
+  profiles:
+    active: postgres
+#  propriedades movidas para o config-server
+#  datasource:
+#    url: jdbc:postgresql://postgres:5432/customer
+#    username: postgres
+#    password: postgres
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+    show-sql: true
+  cloud:
+    discovery:
+      client:
+        simple:
+          instances:
+            localhost:
+              0:
+                uri: http://microservices-fraud:8092
+    config:
+      uri: http://config-server:8096
+      label: conexao
+  config:
+    import: configserver:http://config-server:8096
+  zipkin:
+    enabled: true
+    baseUrl: http://zipkin:9411
+
+customer:
+  fraud:
+    url: http://FRAUD/
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://microservices-eureka-server:8761/eureka/
+    register-with-eureka: true
+    fetch-registry: true
